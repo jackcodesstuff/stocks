@@ -43,12 +43,12 @@ from datetime import datetime
 
 def analyze_stocks(tickers: list[str]):
     analysis_results = {}
-    #now = datetime.now(pytz.timezone("US/Eastern"))
-    #market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-    #market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    now = datetime.now(pytz.timezone("US/Eastern"))
+    market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
     
-    #if now < market_open or now > market_close:
-    #    return json.dumps({"error": "Market is currently closed. Please try again during market hours."})
+    if now < market_open or now > market_close:
+        return json.dumps({"error": "Market is currently closed. Please try again during market hours."})
 
     for ticker in tickers:
         stock = yf.Ticker(ticker)
@@ -59,6 +59,8 @@ def analyze_stocks(tickers: list[str]):
                 continue
 
             latest_close = hist['Close'].iloc[-1] if not hist.empty else None
+            if latest_close is not None:
+                latest_close = f"{latest_close:.6f}"
             print(f"Fetched data for {ticker} at {datetime.now()} - Latest Close: {latest_close}")
             analysis_results[ticker] = {"latest_close": latest_close}
         except Exception as e:

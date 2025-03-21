@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import './App.css';
 
 function App() {
   const [stockData, setStockData] = useState({});
@@ -34,32 +35,32 @@ function App() {
     };
 
     fetchStockData();
-    const interval = setInterval(fetchStockData, 5000); // Refresh every 5 seconds
+    const interval = setInterval(fetchStockData, 2000);
 
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <div className="p-8">
-      <h1 className="text-2xl font-bold mb-6 text-center">Real-Time Stock Tracker</h1>
-      {loading ? (
-        <p>Loading...</p>
-      ) : error ? (
-        <p className="text-red-500">{error}</p>
-      ) : (
-        <div className="grid grid-cols-2 gap-4">
-          {Object.entries(stockData).map(([ticker, info]) => (
-            <div key={ticker} className="p-4 border border-gray-300 rounded-xl shadow-lg">
-              <h2 className="font-bold text-lg">{ticker}</h2>
-              {info.error ? (
-                <p className="text-red-500">{info.error}</p>
+    <div className="app-container">
+      <h1 className="app-title">📈 Real-Time Stock Tracker</h1>
+      <div className="stock-grid">
+        {Object.entries(stockData).map(([ticker, info]) => (
+          <div key={ticker} className="stock-card">
+            <h2>{ticker}</h2>
+            {info.error ? (
+              <p className="error">{info.error}</p>
+            ) : (
+              loading ? (
+                <div className="loading">Loading...</div>
+              ) : error ? (
+                <div className="error">{error}</div>
               ) : (
                 <p>Latest Close: {info.latest_close}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+              )
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
