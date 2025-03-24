@@ -8,6 +8,9 @@ function App() {
   const [error, setError] = useState(null);
   const [selectedInterval, setSelectedInterval] = useState('1d');
   const [selectedFetchFrequency, setSelectedFetchFrequency] = useState(5000);
+  const [firstLetter, setFirstLetter] = useState('A');
+  const [percentChange, setPercentChange] = useState(0);
+  const [priceRange, setPriceRange] = useState([0, 500]);
 
   useEffect(() => {
     const fetchStockData = async () => {
@@ -18,7 +21,7 @@ function App() {
         const stocks = ["AAPL", "GOOGL", "MSFT", "TSLA", "META", "NVDA", "AMZN", "AMD", "RIVN", "NFLX", "GIS", "GM", "K", "BA", "DIS", "SBUX"];
 
         const fetchPromises = stocks.map(async (ticker) => {
-          const response = await fetch(`http://127.0.0.1:8000/stocks?interval=${selectedInterval}&ticker=${ticker}`, {
+          const response = await fetch(`http://127.0.0.1:8000/stocks?interval=${selectedInterval}&ticker=${ticker}&alphabetical=${firstLetter}&percentChange=${percentChange}&priceRange=${priceRange}`, {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
@@ -48,12 +51,12 @@ function App() {
     fetchStockData();
     const interval = setInterval(fetchStockData, selectedFetchFrequency);
     return () => clearInterval(interval);
-  }, [selectedInterval, selectedFetchFrequency]);
+  }, [selectedInterval, selectedFetchFrequency, firstLetter, percentChange, priceRange]);
 
   return (
     <div className="app-container">
       <h1 className="app-title">📈 FireB🦅rd</h1>
-      <div className="interval-selector">
+      <div className="interval-bar">
         <label>Select Time Interval: </label>
         <select value={selectedInterval} onChange={(e) => setSelectedInterval(e.target.value)}>
           <option value="1d">1 Day</option>
@@ -76,33 +79,73 @@ function App() {
           <option value={30000}>30</option>
         </select>
       </div>
+      <div className='sort-by-bar'>
+        <label>Alphabetical Order</label>
+        <select value={firstLetter} onChange={(e) => setFirstLetter(e.target.value)}>
+          {Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i)).map(letter => (
+            <option key={letter} value={letter}>{letter}</option>
+          ))}
+        </select>
+
+        <label>Percent Change</label>
+        <input 
+          type="range" 
+          min="-100" 
+          max="100" 
+          value={percentChange} 
+          onChange={(e) => setPercentChange(e.target.value)} 
+        />
+        <span>{percentChange}%</span>
+
+        <label>Price Range</label>
+        <input 
+          type="range" 
+          min="0" 
+          max="1000" 
+          step="10"
+          value={priceRange} 
+          onChange={(e) => setPriceRange(e.target.value)} 
+        />
+        <span>${priceRange}</span>
+      </div>
+
       <div className="stock-grid">
-        {stockData && Object.entries(stockData).map(([ticker, info]) => (
-          <div key={ticker} className="stock-card">
-            <h2>{ticker}</h2>
-            {info.error ? (
-              <p className="error">{info.error}</p>
-            ) : (
-              loading ? (
-                <div className="loading">Loading...</div>
-              ) : error ? (
-                <div className="error">{error}</div>
+        {stockData && typeof stockData === "object" && Object.keys(stockData).length > 0 ? (
+          Object.entries(stockData).map(([ticker, info]) => (
+            <div key={ticker} className="stock-card">
+              <h2>{ticker}</h2>
+              {info && typeof info === "object" ? (
+                info.error ? (
+                  <p className="error">{info.error}</p>
+                ) : loading ? (
+                  <div className="loading">Loading...</div>
+                ) : error ? (
+                  <div className="error">{error}</div>
+                ) : (
+                  <div>
+                    <p>Latest Close: {info.latest_close}</p>
+                    {info.history && Array.isArray(info.history) && info.history.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={200}>
+                        <LineChart data={info.history}>
+                          <XAxis dataKey="time" hide={true} />
+                          <YAxis domain={["auto", "auto"]} />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="close" stroke="#82ca9d" dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <p className="error">No historical data available</p>
+                    )}
+                  </div>
+                )
               ) : (
-                <div>
-                  <p>Latest Close: {info.latest_close}</p>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <LineChart data={info.history}>
-                      <XAxis dataKey="time" hide={true} />
-                      <YAxis domain={['auto', 'auto']} />
-                      <Tooltip />
-                      <Line type="monotone" dataKey="close" stroke="#82ca9d" dot={false} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              )
-            )}
-          </div>
-        ))}
+                <p className="error">Invalid stock data</p>
+              )}
+            </div>
+          ))
+        ) : (
+          <p className="error">No stock data available</p>
+        )}
       </div>
     </div>
   );
