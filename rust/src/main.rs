@@ -1,6 +1,6 @@
-use rocket::{get, routes, Rocket, serde::json::Json, http::{Method, Header}};
+use rocket::{get, routes, Rocket, serde::json::Json, http::{Method, Header, Status}, Request, Response};
+use serde_json::json;
 use rocket::fairing::{Fairing, Info, Kind};
-use rocket::{Request, Response};
 use pyo3::prelude::*;
 use pyo3::types::PyModule;
 use serde_json::Value;
@@ -24,67 +24,75 @@ impl Fairing for CORS {
         response.set_header(Header::new("Access-Control-Allow-Headers", "Content-Type, Cache-Control"));
         response.set_header(Header::new("Cache-Control", "no-store"));
 
-        // Allow OPTIONS preflight requests
         if request.method() == Method::Options {
-            response.set_status(rocket::http::Status::Ok);
+            response.set_status(Status::Ok);
         }
     }
 }
 
-#[get("/stocks")]
-fn get_stocks() -> (rocket::http::Status, Json<Value>) {
+#[get("/stocks?<interval>")]
+fn get_stocks(interval: Option<String>) -> (Status, Json<Value>) {
     pyo3::prepare_freethreaded_python();
     Python::with_gil(|py| {
         let code = r#"
 import yfinance as yf
 import json
-import pytz
-from datetime import datetime
 
-def analyze_stocks(tickers: list[str]):
+def analyze_stocks(tickers, interval):
     analysis_results = {}
-    now = datetime.now(pytz.timezone("US/Eastern"))
-    market_open = now.replace(hour=9, minute=30, second=0, microsecond=0)
-    market_close = now.replace(hour=16, minute=0, second=0, microsecond=0)
     
-    if now < market_open or now > market_close:
-        return json.dumps({"error": "Market is currently closed. Please try again during market hours."})
-
     for ticker in tickers:
         stock = yf.Ticker(ticker)
         try:
-            hist = stock.history(period="1d", interval="1m", auto_adjust=True, proxy=None)
+            hist = stock.history(period=interval, interval="1d", auto_adjust=True)
             if hist.empty:
                 analysis_results[ticker] = {"error": "No data available"}
                 continue
 
             latest_close = hist['Close'].iloc[-1] if not hist.empty else None
-            if latest_close is not None:
-                latest_close = f"{latest_close:.6f}"
-            print(f"Fetched data for {ticker} at {datetime.now()} - Latest Close: {latest_close}")
-            analysis_results[ticker] = {"latest_close": latest_close}
+            history = [{"time": str(index), "close": close} for index, close in zip(hist.index, hist['Close'])]
+
+            analysis_results[ticker] = {"latest_close": latest_close, "history": history}
         except Exception as e:
             analysis_results[ticker] = {"error": str(e)}
 
     return json.dumps(analysis_results)
 "#;
 
-        let module = PyModule::from_code(py, code, "stock_analysis.py", "stock_analysis").unwrap();
-        let analyze_stocks = module.getattr("analyze_stocks").unwrap();
+        match PyModule::from_code(py, code, "stock_analysis.py", "stock_analysis") {
+            Ok(module) => {
+                let analyze_stocks = module.getattr("analyze_stocks").unwrap();
+                let stocks = vec![
+                    "AAPL", "GOOGL", "MSFT", "TSLA", "META", "NVDA", "AMZN", "AMD", 
+                    "RIVN", "NFLX", "GIS", "GM", "K", "BA", "DIS", "SBUX"
+                ];
+                let interval_str = interval.unwrap_or_else(|| "1d".to_string());
 
-        let stocks = vec!["AAPL", "GOOGL", "MSFT", "TSLA", "META", "NVDA", "AMZN", "AMD", "RIVN", "NFLX"];
-        let result: PyObject = analyze_stocks.call1((stocks,)).unwrap().into();
-
-        let result: &PyAny = result.as_ref(py);
-        let json_string: String = result.extract().unwrap();
-
-        (rocket::http::Status::Ok, Json(serde_json::from_str(&json_string).unwrap()))
+                match analyze_stocks.call1((stocks, interval_str)) {
+                    Ok(result) => {
+                        let json_string: String = result.extract().unwrap();
+                        match serde_json::from_str(&json_string) {
+                            Ok(parsed_json) => (Status::Ok, Json(parsed_json)),
+                            Err(_) => (Status::InternalServerError, Json(json!({"error": "Failed to parse JSON response"})))
+                        }
+                    }
+                    Err(e) => {
+                        let error_message = e.to_string();
+                        (Status::InternalServerError, Json(json!({"error": error_message})))
+                    }
+                }
+            }
+            Err(e) => {
+                let error_message = e.to_string();
+                (Status::InternalServerError, Json(json!({"error": error_message})))
+            }
+        }
     })
 }
 
 #[options("/stocks")]
-fn options_stocks() -> (rocket::http::Status, ()) {
-    (rocket::http::Status::Ok, ())
+fn options_stocks() -> (Status, ()) {
+    (Status::Ok, ())
 }
 
 #[launch]
